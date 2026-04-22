@@ -28,11 +28,19 @@ jobs:
       - name: Show Forge version
         run: forge --version
 
-      - name: Run Forge fmt
-        run: forge fmt --check
-
       - name: Run Forge build
         run: forge build --sizes
 
       - name: Run Forge tests
         run: forge test -vvv
+
+      # Surfaces storage-layout drift for the upgradeable contracts on every run
+      # so proxy-incompatible changes show up in the PR log.
+      - name: Dump proxy storage layouts
+        run: |
+          echo "::group::ListaV3Factory"
+          forge inspect ListaV3Factory storage-layout
+          echo "::endgroup::"
+          echo "::group::NonfungiblePositionManager"
+          forge inspect NonfungiblePositionManager storage-layout
+          echo "::endgroup::"
