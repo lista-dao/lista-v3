@@ -3,8 +3,9 @@ pragma solidity >=0.5.0;
 
 /// @title Provides functions for deriving a pool address from the factory, tokens, and the fee
 library PoolAddress {
-    // Post-rename init code hash of ListaV3Pool; must match keccak256(type(ListaV3Pool).creationCode).
-    bytes32 internal constant POOL_INIT_CODE_HASH = 0x866ffd858f844cac69b3a90d247f1c6746d1a126fc3304e9ae519de5e76f7623;
+    // Init code hash of ListaV3Pool; must match keccak256(type(ListaV3Pool).creationCode).
+    // Stable across machines because foundry.toml sets bytecode_hash = "none".
+    bytes32 internal constant POOL_INIT_CODE_HASH = 0xa93d35cf943696a95cabbe3aa4b3d87ea5387169face953a337716fc15136ca2;
 
     /// @notice The identifying key of the pool
     struct PoolKey {
