@@ -2,11 +2,11 @@
 pragma solidity >=0.7.5;
 pragma abicoder v2;
 
-import 'lib/openzeppelin-contracts/contracts/token/ERC721/IERC721Metadata.sol';
-import 'lib/openzeppelin-contracts/contracts/token/ERC721/IERC721Enumerable.sol';
+import 'lib/openzeppelin-contracts-upgradeable/contracts/token/ERC721/IERC721MetadataUpgradeable.sol';
+import 'lib/openzeppelin-contracts-upgradeable/contracts/token/ERC721/IERC721EnumerableUpgradeable.sol';
 
 import './IPoolInitializer.sol';
-import './IERC721Permit.sol';
+import './IERC721PermitUpgradeable.sol';
 import './IPeripheryPayments.sol';
 import './IPeripheryImmutableState.sol';
 
@@ -17,9 +17,9 @@ interface INonfungiblePositionManager is
     IPoolInitializer,
     IPeripheryPayments,
     IPeripheryImmutableState,
-    IERC721Metadata,
-    IERC721Enumerable,
-    IERC721Permit
+    IERC721MetadataUpgradeable,
+    IERC721EnumerableUpgradeable,
+    IERC721PermitUpgradeable
 {
     /// @notice Emitted when liquidity is increased for a position NFT
     /// @dev Also emitted when a token is minted

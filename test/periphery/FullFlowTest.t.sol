@@ -6,12 +6,18 @@ import 'forge-std/Test.sol';
 
 import {ListaV3Pool} from '../../src/core/ListaV3Pool.sol';
 import {ListaV3Factory} from '../../src/core/ListaV3Factory.sol';
+import {IListaV3Pool} from '../../src/core/interfaces/IListaV3Pool.sol';
+import {IListaV3PoolDeployer} from '../../src/core/interfaces/IListaV3PoolDeployer.sol';
 
 import {NonfungiblePositionManager} from '../../src/periphery/NonfungiblePositionManager.sol';
 import {SwapRouter} from '../../src/periphery/SwapRouter.sol';
 import {INonfungiblePositionManager} from '../../src/periphery/interfaces/INonfungiblePositionManager.sol';
 import {ISwapRouter} from '../../src/periphery/interfaces/ISwapRouter.sol';
 import {PoolAddress} from '../../src/periphery/libraries/PoolAddress.sol';
+import {ChainId} from '../../src/periphery/libraries/ChainId.sol';
+
+import {TransparentUpgradeableProxy} from 'lib/openzeppelin-contracts/contracts/proxy/TransparentUpgradeableProxy.sol';
+import {ProxyAdmin} from 'lib/openzeppelin-contracts/contracts/proxy/ProxyAdmin.sol';
 
 import {TestERC20} from '../core/TestERC20.sol';
 
@@ -72,6 +78,7 @@ contract FullFlowTest is Test {
     WETH9Mock internal weth;
     NonfungiblePositionManager internal npm;
     SwapRouter internal router;
+    ProxyAdmin internal proxyAdmin;
     TestERC20 internal token0;
     TestERC20 internal token1;
 
@@ -87,9 +94,21 @@ contract FullFlowTest is Test {
     uint128 internal mintedLiquidity;
 
     function setUp() public {
-        factory = new ListaV3Factory();
         weth = new WETH9Mock();
-        npm = new NonfungiblePositionManager(address(factory), address(weth), address(0));
+        proxyAdmin = new ProxyAdmin();
+
+        ListaV3Factory factoryImpl = new ListaV3Factory();
+        bytes memory factoryInit = abi.encodeWithSelector(ListaV3Factory.initialize.selector, address(this));
+        TransparentUpgradeableProxy factoryProxy =
+            new TransparentUpgradeableProxy(address(factoryImpl), address(proxyAdmin), factoryInit);
+        factory = ListaV3Factory(address(factoryProxy));
+
+        NonfungiblePositionManager npmImpl = new NonfungiblePositionManager(address(factory), address(weth));
+        bytes memory npmInit = abi.encodeWithSelector(NonfungiblePositionManager.initialize.selector, address(0));
+        TransparentUpgradeableProxy npmProxy =
+            new TransparentUpgradeableProxy(address(npmImpl), address(proxyAdmin), npmInit);
+        npm = NonfungiblePositionManager(payable(address(npmProxy)));
+
         router = new SwapRouter(address(factory), address(weth));
 
         TestERC20 a = new TestERC20(type(uint128).max);
@@ -118,6 +137,49 @@ contract FullFlowTest is Test {
         assertEq(actual, PoolAddress.POOL_INIT_CODE_HASH);
     }
 
+    /// @notice Verifies NPM's constructor-set immutables and initializer-set state on the proxy.
+    function testNpmImmutablesAndInitialState() public {
+        // Immutables baked into the impl via PeripheryImmutableState(ctor) — resolve through delegatecall
+        assertEq(npm.factory(), address(factory));
+        assertEq(npm.WETH9(), address(weth));
+
+        // ERC721 metadata set by __ERC721_init through initialize()
+        assertEq(npm.name(), 'Lista V3 Positions NFT-V1');
+        assertEq(npm.symbol(), 'LIS-V3-POS');
+
+        // EIP-165 registrations written to proxy storage during initialize()
+        assertTrue(npm.supportsInterface(0x01ffc9a7)); // ERC165
+        assertTrue(npm.supportsInterface(0x80ac58cd)); // ERC721
+        assertTrue(npm.supportsInterface(0x5b5e139f)); // ERC721Metadata
+        assertTrue(npm.supportsInterface(0x780e9d63)); // ERC721Enumerable
+        assertFalse(npm.supportsInterface(0xffffffff));
+
+        // ERC721Permit typehash is a compile-time constant; DOMAIN_SEPARATOR is bound to the proxy
+        assertEq(
+            npm.PERMIT_TYPEHASH(),
+            0x49ecf333e5b8c95c40fdafc95c1ad136e8914a8fb55e9dc8bb01eaa83a2df9ad
+        );
+        bytes32 expectedDomain =
+            keccak256(
+                abi.encode(
+                    0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f,
+                    keccak256(bytes('Lista V3 Positions NFT-V1')),
+                    keccak256(bytes('1')),
+                    ChainId.get(),
+                    address(npm)
+                )
+            );
+        assertEq(npm.DOMAIN_SEPARATOR(), expectedDomain);
+
+        // Enumerable baseline before any mint
+        assertEq(npm.totalSupply(), 0);
+        assertEq(npm.balanceOf(alice), 0);
+
+        // Initializer is one-shot
+        vm.expectRevert(bytes('Initializable: contract is already initialized'));
+        npm.initialize(address(0));
+    }
+
     function testFullFlow() public {
         _createPool();
         _mintPosition();
@@ -135,6 +197,23 @@ contract FullFlowTest is Test {
             INITIAL_SQRT_PRICE
         );
         assertTrue(pool != address(0));
+
+        // Deployer's transient parameters storage must be cleared after deploy
+        IListaV3PoolDeployer deployer = IListaV3PoolDeployer(address(factory));
+        (address pf, address pt0, address pt1, uint24 pfee, int24 pspacing) = deployer.parameters();
+        assertEq(pf, address(0));
+        assertEq(pt0, address(0));
+        assertEq(pt1, address(0));
+        assertEq(uint256(pfee), 0);
+        assertEq(int256(pspacing), 0);
+
+        // Pool immutables must match what the deployer supplied during construction
+        IListaV3Pool p = IListaV3Pool(pool);
+        assertEq(p.factory(), address(factory));
+        assertEq(p.token0(), address(token0));
+        assertEq(p.token1(), address(token1));
+        assertEq(uint256(p.fee()), uint256(FEE));
+        assertEq(int256(p.tickSpacing()), int256(factory.feeAmountTickSpacing(FEE)));
     }
 
     function _mintPosition() internal {
@@ -156,6 +235,10 @@ contract FullFlowTest is Test {
         );
         tokenId = _tokenId;
         mintedLiquidity = _liquidity;
+        // Verifies initialize() seeded _nextId = 1 (first mint must return tokenId 1)
+        assertEq(tokenId, 1);
+        assertEq(npm.totalSupply(), 1);
+        assertEq(npm.balanceOf(alice), 1);
         assertEq(npm.ownerOf(tokenId), alice);
         assertTrue(_liquidity > 0);
         assertTrue(a0 > 0 && a1 > 0);

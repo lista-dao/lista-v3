@@ -2,6 +2,10 @@
 pragma solidity =0.7.6;
 pragma abicoder v2;
 
+import 'lib/openzeppelin-contracts-upgradeable/contracts/token/ERC721/ERC721Upgradeable.sol';
+import 'lib/openzeppelin-contracts-upgradeable/contracts/token/ERC721/IERC721MetadataUpgradeable.sol';
+import 'lib/openzeppelin-contracts-upgradeable/contracts/token/ERC721/IERC721Upgradeable.sol';
+
 import 'src/core/interfaces/IListaV3Pool.sol';
 import 'src/core/libraries/FixedPoint128.sol';
 import 'src/core/libraries/FullMath.sol';
@@ -13,17 +17,18 @@ import './libraries/PoolAddress.sol';
 import './base/LiquidityManagement.sol';
 import './base/PeripheryImmutableState.sol';
 import './base/Multicall.sol';
-import './base/ERC721Permit.sol';
+import './base/ERC721PermitUpgradeable.sol';
 import './base/PeripheryValidation.sol';
 import './base/SelfPermit.sol';
 import './base/PoolInitializer.sol';
 
 /// @title NFT positions
 /// @notice Wraps Lista V3 positions in the ERC721 non-fungible token interface
+/// @dev Deployed behind a TransparentUpgradeableProxy; initialize() replaces the constructor.
 contract NonfungiblePositionManager is
     INonfungiblePositionManager,
     Multicall,
-    ERC721Permit,
+    ERC721PermitUpgradeable,
     PeripheryImmutableState,
     PoolInitializer,
     LiquidityManagement,
@@ -60,20 +65,23 @@ contract NonfungiblePositionManager is
     /// @dev The token ID position data
     mapping(uint256 => Position) private _positions;
 
-    /// @dev The ID of the next token that will be minted. Skips 0
-    uint176 private _nextId = 1;
-    /// @dev The ID of the next pool that is used for the first time. Skips 0
-    uint80 private _nextPoolId = 1;
+    /// @dev The ID of the next token that will be minted. Skips 0. Set in initialize().
+    uint176 private _nextId;
+    /// @dev The ID of the next pool that is used for the first time. Skips 0. Set in initialize().
+    uint80 private _nextPoolId;
 
     /// @dev The address of the token descriptor contract, which handles generating token URIs for position tokens
-    address private immutable _tokenDescriptor;
+    address private _tokenDescriptor;
 
-    constructor(
-        address _factory,
-        address _WETH9,
-        address _tokenDescriptor_
-    ) ERC721Permit('Lista V3 Positions NFT-V1', 'LIS-V3-POS', '1') PeripheryImmutableState(_factory, _WETH9) {
+    uint256[45] private __gap;
+
+    constructor(address _factory, address _WETH9) PeripheryImmutableState(_factory, _WETH9) {}
+
+    function initialize(address _tokenDescriptor_) external initializer {
+        __ERC721Permit_init('Lista V3 Positions NFT-V1', 'LIS-V3-POS', '1');
         _tokenDescriptor = _tokenDescriptor_;
+        _nextId = 1;
+        _nextPoolId = 1;
     }
 
     /// @inheritdoc INonfungiblePositionManager
@@ -186,7 +194,12 @@ contract NonfungiblePositionManager is
         _;
     }
 
-    function tokenURI(uint256 tokenId) public view override(ERC721, IERC721Metadata) returns (string memory) {
+    function tokenURI(uint256 tokenId)
+        public
+        view
+        override(ERC721Upgradeable, IERC721MetadataUpgradeable)
+        returns (string memory)
+    {
         require(_exists(tokenId));
         return INonfungibleTokenPositionDescriptor(_tokenDescriptor).tokenURI(this, tokenId);
     }
@@ -385,15 +398,20 @@ contract NonfungiblePositionManager is
         return uint256(_positions[tokenId].nonce++);
     }
 
-    /// @inheritdoc IERC721
-    function getApproved(uint256 tokenId) public view override(ERC721, IERC721) returns (address) {
+    /// @inheritdoc IERC721Upgradeable
+    function getApproved(uint256 tokenId)
+        public
+        view
+        override(ERC721Upgradeable, IERC721Upgradeable)
+        returns (address)
+    {
         require(_exists(tokenId), 'ERC721: approved query for nonexistent token');
 
         return _positions[tokenId].operator;
     }
 
     /// @dev Overrides _approve to use the operator in the position, which is packed with the position permit nonce
-    function _approve(address to, uint256 tokenId) internal override(ERC721) {
+    function _approve(address to, uint256 tokenId) internal override(ERC721Upgradeable) {
         _positions[tokenId].operator = to;
         emit Approval(ownerOf(tokenId), to, tokenId);
     }
