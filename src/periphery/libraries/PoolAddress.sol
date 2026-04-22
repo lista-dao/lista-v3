@@ -4,7 +4,7 @@ pragma solidity >=0.5.0;
 /// @title Provides functions for deriving a pool address from the factory, tokens, and the fee
 library PoolAddress {
     // Post-rename init code hash of ListaV3Pool; must match keccak256(type(ListaV3Pool).creationCode).
-    bytes32 internal constant POOL_INIT_CODE_HASH = 0x810bcfa2272833e7170faadd4e1478e6c08783b7a576c7ab4a48e11e679eeaad;
+    bytes32 internal constant POOL_INIT_CODE_HASH = 0x866ffd858f844cac69b3a90d247f1c6746d1a126fc3304e9ae519de5e76f7623;
 
     /// @notice The identifying key of the pool
     struct PoolKey {
