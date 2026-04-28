@@ -41,6 +41,16 @@ forge test
 
 The end-to-end flow (pool creation, mint, swap, increase / decrease liquidity, collect, transfer, burn) runs in `test/periphery/FullFlowTest.t.sol`, which also exercises the proxy wiring and asserts NPM initializer state / ERC-165 registrations.
 
+## License & on-chain bytecode reuse
+
+Source is GPL-2.0-or-later (see `NOTICE` for derivation and attribution).
+
+`NoDelegateCall` has been removed from `ListaV3Factory` — its `address(this) == original` invariant is incompatible with the proxy pattern, since every legitimate call from `TransparentUpgradeableProxy` is itself a `delegatecall`. `ListaV3Pool` is unproxied and keeps the modifier.
+
+Upstream Uniswap V3 added `NoDelegateCall` as a license-agnostic deterrent against on-chain bytecode reuse — the original PR comment frames the intent as ["Prevents circumventing the license, GPL or otherwise"](https://github.com/Uniswap/v3-core/pull/327#issuecomment-813462722). Without it, a third party can point their own proxy at our deployed factory implementation and run a parallel AMM on Lista's compiled logic. Pools they create that way are state-isolated — CREATE2 addresses derive from their proxy, not Lista's — and cannot interact with Lista pools.
+
+This does not change GPL obligations: source modification and redistribution remain governed by GPL-2.0-or-later. The legal status of `delegatecall`-into-licensed-bytecode is itself unsettled; `NoDelegateCall` was a technical deterrent, not a settled legal interpretation. We accept the tradeoff as the cost of TUP-fronted upgradeability.
+
 ## Dependencies
 
 Git submodules under `lib/`:
