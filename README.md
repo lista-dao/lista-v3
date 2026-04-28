@@ -28,6 +28,7 @@ Operational notes:
 
 - The Factory/NPM implementations should have their initializers consumed post-deploy (e.g. `initialize(0xdead)` / `initialize(0xdead, 0xdead)`) to close the Parity-style impl-takeover window.
 - Pool addresses are derived from the factory proxy via `PoolAddress.computeAddress`. If `ListaV3Pool` bytecode is ever changed, `PoolAddress.POOL_INIT_CODE_HASH` must be recomputed — the value in `src/periphery/libraries/PoolAddress.sol` is only valid for the currently-checked-in pool source and build settings.
+- Re-verify `POOL_INIT_CODE_HASH` before deploying to a new chain. The value is machine-deterministic given `bytecode_hash = "none"` in `foundry.toml`, but a different toolchain version, optimizer setting, or solc patch can still shift it. Run `testInitCodeHash` in `test/periphery/FullFlowTest.t.sol` against your build environment as a pre-deploy gate; if it fails, update the constant before deploying or off-chain pool address derivation will silently point at the wrong addresses.
 
 ## Build & test
 
