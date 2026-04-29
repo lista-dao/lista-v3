@@ -24,8 +24,6 @@ abstract contract ERC721PermitUpgradeable is Initializable, BlockTimestamp, ERC7
     /// @dev The hash of the version string used in the permit signature verification
     bytes32 private _versionHash;
 
-    uint256[48] private __gap;
-
     function __ERC721Permit_init(
         string memory name_,
         string memory symbol_,
