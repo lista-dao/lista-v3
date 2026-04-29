@@ -8,16 +8,13 @@ optimizer_runs = 500
 # deterministic across machines / lib changes (matching Uniswap V3's production config).
 bytecode_hash = "none"
 
-# Factory and NonfungiblePositionManager exceed EIP-170 at the default run count.
-# Compile them with fewer runs (smaller runtime bytecode, slightly more gas per call).
-# Same profile for both so Foundry can resolve Deploy.s.sol (which imports both) as
-# a single compilation unit.
+# NonfungiblePositionManager exceeds EIP-170 at the default run count, so compile
+# it with fewer runs (smaller runtime bytecode, slightly more gas per call).
 additional_compiler_profiles = [
     { name = "small", optimizer_runs = 50 },
 ]
 
 compilation_restrictions = [
-    { paths = "src/core/ListaV3Factory.sol", optimizer_runs = 50 },
     { paths = "src/periphery/NonfungiblePositionManager.sol", optimizer_runs = 50 },
 ]
 

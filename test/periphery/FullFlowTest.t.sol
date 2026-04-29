@@ -97,11 +97,7 @@ contract FullFlowTest is Test {
         weth = new WETH9Mock();
         proxyAdmin = new ProxyAdmin();
 
-        ListaV3Factory factoryImpl = new ListaV3Factory();
-        bytes memory factoryInit = abi.encodeWithSelector(ListaV3Factory.initialize.selector, address(this));
-        TransparentUpgradeableProxy factoryProxy =
-            new TransparentUpgradeableProxy(address(factoryImpl), address(proxyAdmin), factoryInit);
-        factory = ListaV3Factory(address(factoryProxy));
+        factory = new ListaV3Factory();
 
         NonfungiblePositionManager npmImpl = new NonfungiblePositionManager(address(factory), address(weth));
         bytes memory npmInit = abi.encodeWithSelector(NonfungiblePositionManager.initialize.selector, address(0));

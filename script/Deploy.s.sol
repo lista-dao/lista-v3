@@ -31,8 +31,7 @@ import {TransparentUpgradeableProxy} from 'lib/openzeppelin-contracts/contracts/
 contract Deploy is Script {
     struct Deployment {
         address proxyAdmin;
-        address factoryImpl;
-        address factoryProxy;
+        address factory;
         address npmImpl;
         address npmProxy;
         address swapRouter;
@@ -67,33 +66,30 @@ contract Deploy is Script {
             proxyAdmin.transferOwnership(proxyAdminOwner);
         }
 
-        // Factory: impl + proxy
-        ListaV3Factory factoryImpl = new ListaV3Factory();
-        // Consume the impl's initializer so it can't be hijacked on-chain.
-        factoryImpl.initialize(address(0xdead));
-
-        bytes memory factoryInit = abi.encodeWithSelector(ListaV3Factory.initialize.selector, owner);
-        TransparentUpgradeableProxy factoryProxy =
-            new TransparentUpgradeableProxy(address(factoryImpl), address(proxyAdmin), factoryInit);
+        // Factory: plain deploy. owner = msg.sender (the broadcaster). If a separate
+        // owner is required, the broadcaster should call factory.setOwner(owner) after.
+        ListaV3Factory factory = new ListaV3Factory();
+        if (owner != address(0) && owner != msg.sender) {
+            factory.setOwner(owner);
+        }
 
         // NPM: impl + proxy. factory/WETH9 are constructor immutables on the impl; every
-        // future upgrade MUST re-pass the exact same (factoryProxy, WETH9) to the new impl.
-        NonfungiblePositionManager npmImpl = new NonfungiblePositionManager(address(factoryProxy), weth9);
+        // future upgrade MUST re-pass the exact same (factory, WETH9) to the new impl.
+        NonfungiblePositionManager npmImpl = new NonfungiblePositionManager(address(factory), weth9);
         npmImpl.initialize(address(0xdead));
 
         bytes memory npmInit = abi.encodeWithSelector(NonfungiblePositionManager.initialize.selector, tokenDescriptor);
         TransparentUpgradeableProxy npmProxy =
             new TransparentUpgradeableProxy(address(npmImpl), address(proxyAdmin), npmInit);
 
-        // SwapRouter is not upgradeable; it's a plain deploy against the factory proxy.
-        SwapRouter swapRouter = new SwapRouter(address(factoryProxy), weth9);
+        // SwapRouter is not upgradeable; plain deploy against the factory.
+        SwapRouter swapRouter = new SwapRouter(address(factory), weth9);
 
         vm.stopBroadcast();
 
         out = Deployment({
             proxyAdmin: address(proxyAdmin),
-            factoryImpl: address(factoryImpl),
-            factoryProxy: address(factoryProxy),
+            factory: address(factory),
             npmImpl: address(npmImpl),
             npmProxy: address(npmProxy),
             swapRouter: address(swapRouter)
@@ -101,8 +97,7 @@ contract Deploy is Script {
 
         console.log('--- deployed ---');
         console.log('ProxyAdmin:', out.proxyAdmin);
-        console.log('Factory impl:', out.factoryImpl);
-        console.log('Factory proxy:', out.factoryProxy);
+        console.log('Factory:', out.factory);
         console.log('NPM impl:', out.npmImpl);
         console.log('NPM proxy:', out.npmProxy);
         console.log('SwapRouter:', out.swapRouter);
