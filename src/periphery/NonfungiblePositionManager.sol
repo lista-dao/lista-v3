@@ -73,8 +73,6 @@ contract NonfungiblePositionManager is
     /// @dev The address of the token descriptor contract, which handles generating token URIs for position tokens
     address private _tokenDescriptor;
 
-    uint256[45] private __gap;
-
     constructor(address _factory, address _WETH9) PeripheryImmutableState(_factory, _WETH9) {}
 
     function initialize(address _tokenDescriptor_) external initializer {
