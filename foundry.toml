@@ -10,12 +10,17 @@ bytecode_hash = "none"
 
 # NonfungiblePositionManager exceeds EIP-170 at the default run count, so compile
 # it with fewer runs (smaller runtime bytecode, slightly more gas per call).
+# ListaV3Pool is pinned to the same profile so POOL_INIT_CODE_HASH binds to exactly
+# one Pool bytecode regardless of which compilation unit pulls it in — otherwise
+# Foundry produces two Pool artifacts (default + small) and the hardcoded constant
+# would silently match only one of them (per Bailsec audit Issue_06).
 additional_compiler_profiles = [
     { name = "small", optimizer_runs = 50 },
 ]
 
 compilation_restrictions = [
     { paths = "src/periphery/NonfungiblePositionManager.sol", optimizer_runs = 50 },
+    { paths = "src/core/ListaV3Pool.sol", optimizer_runs = 50 },
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
