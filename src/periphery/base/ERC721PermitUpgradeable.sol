@@ -24,6 +24,9 @@ abstract contract ERC721PermitUpgradeable is Initializable, BlockTimestamp, ERC7
     /// @dev The hash of the version string used in the permit signature verification
     bytes32 private _versionHash;
 
+    /// @dev Reserved slots for future state additions to this base. Sized so the base
+    /// (_nameHash + _versionHash + __gap) occupies 50 slots, so additions here consume
+    /// from __gap rather than shifting NonfungiblePositionManager's storage layout.
     uint256[48] private __gap;
 
     function __ERC721Permit_init(
