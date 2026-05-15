@@ -49,6 +49,7 @@ contract Deploy is Script {
         address tokenDescriptor = vm.envOr('TOKEN_DESCRIPTOR', address(0));
 
         require(owner != address(0), 'OWNER=0');
+        require(proxyAdminOwner != address(0), 'PROXY_ADMIN_OWNER=0');
         require(weth9 != address(0), 'WETH9=0');
 
         console.log('--- Lista V3 deploy ---');
@@ -62,14 +63,16 @@ contract Deploy is Script {
         vm.startBroadcast();
 
         ProxyAdmin proxyAdmin = new ProxyAdmin();
-        if (proxyAdminOwner != address(this) && proxyAdminOwner != proxyAdmin.owner()) {
+        // ProxyAdmin.owner() is set to msg.sender (the broadcaster) in its constructor.
+        // Transfer only if a different owner was requested.
+        if (proxyAdminOwner != proxyAdmin.owner()) {
             proxyAdmin.transferOwnership(proxyAdminOwner);
         }
 
         // Factory: plain deploy. owner = msg.sender (the broadcaster). If a separate
         // owner is required, the broadcaster should call factory.setOwner(owner) after.
         ListaV3Factory factory = new ListaV3Factory();
-        if (owner != address(0) && owner != msg.sender) {
+        if (owner != msg.sender) {
             factory.setOwner(owner);
         }
 
