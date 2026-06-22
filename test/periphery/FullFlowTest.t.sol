@@ -140,8 +140,8 @@ contract FullFlowTest is Test {
         assertEq(npm.WETH9(), address(weth));
 
         // ERC721 metadata set by __ERC721_init through initialize()
-        assertEq(npm.name(), 'Lista V3 Positions NFT-V1');
-        assertEq(npm.symbol(), 'LIS-V3-POS');
+        assertEq(npm.name(), 'Lista V3 Positions NFT');
+        assertEq(npm.symbol(), 'LISTA-V3');
 
         // EIP-165 registrations written to proxy storage during initialize()
         assertTrue(npm.supportsInterface(0x01ffc9a7)); // ERC165
@@ -159,7 +159,7 @@ contract FullFlowTest is Test {
             keccak256(
                 abi.encode(
                     0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f,
-                    keccak256(bytes('Lista V3 Positions NFT-V1')),
+                    keccak256(bytes('Lista V3 Positions NFT')),
                     keccak256(bytes('1')),
                     ChainId.get(),
                     address(npm)

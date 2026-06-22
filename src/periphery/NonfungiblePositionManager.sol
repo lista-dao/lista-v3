@@ -76,7 +76,7 @@ contract NonfungiblePositionManager is
     constructor(address _factory, address _WETH9) PeripheryImmutableState(_factory, _WETH9) {}
 
     function initialize(address _tokenDescriptor_) external initializer {
-        __ERC721Permit_init('Lista V3 Positions NFT-V1', 'LIS-V3-POS', '1');
+        __ERC721Permit_init('Lista V3 Positions NFT', 'LISTA-V3', '1');
         _tokenDescriptor = _tokenDescriptor_;
         _nextId = 1;
         _nextPoolId = 1;
