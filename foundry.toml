@@ -21,6 +21,10 @@ additional_compiler_profiles = [
 compilation_restrictions = [
     { paths = "src/periphery/NonfungiblePositionManager.sol", optimizer_runs = 50 },
     { paths = "src/core/ListaV3Pool.sol", optimizer_runs = 50 },
+    # src/extensions is solc 0.8.x (OZ v5 UUPS). Without pinning the 0.7 trees, foundry resolves the
+    # loose `>=0.5.0` pragmas in core/periphery libraries up to 0.8 and they fail to compile.
+    { paths = "src/core/libraries/**", version = "=0.7.6" },
+    { paths = "src/periphery/**", version = "=0.7.6" },
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

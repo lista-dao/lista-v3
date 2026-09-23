@@ -20,7 +20,12 @@ jobs:
           submodules: recursive
 
       - name: Install Foundry
+        # Pinned: foundry-toolchain@v1 tracks latest stable. From 1.8.1 dynamic_test_linking
+        # defaults on and generates abicoder-v1 script helpers that cannot inherit
+        # NonfungiblePositionManager (abicoder v2). 1.7.1 is the last version CI was green on.
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
 
       - name: Show Forge version
         run: forge --version

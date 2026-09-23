@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
+    "@openzeppelin/contracts": "5.1.0",
+    "@openzeppelin/contracts-upgradeable": "5.1.0",
     "@uniswap/lib": "4.0.1-alpha",
     "@uniswap/v2-core": "1.0.1",
     "base64-sol": "1.0.1"
