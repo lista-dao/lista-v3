@@ -77,8 +77,14 @@ contract ListaV3FactoryOwner is UUPSUpgradeable, AccessControlEnumerableUpgradea
         (uint128 pending0, uint128 pending1) = IListaV3Pool(pool).protocolFees();
         if (pending0 <= 1 && pending1 <= 1) return (0, 0);
 
+        // Request a side only when it holds more than the 1 wei the pool retains. Requesting max on a
+        // side sitting at exactly 1 makes the pool enter its transfer branch, decrement to 0 and call
+        // transfer(0), which reverts on tokens that reject zero-value transfers.
+        uint128 req0 = pending0 > 1 ? type(uint128).max : 0;
+        uint128 req1 = pending1 > 1 ? type(uint128).max : 0;
+
         address recipient = revenueCollector;
-        (amount0, amount1) = IListaV3Pool(pool).collectProtocol(recipient, type(uint128).max, type(uint128).max);
+        (amount0, amount1) = IListaV3Pool(pool).collectProtocol(recipient, req0, req1);
 
         emit ProtocolFeeCollected(pool, recipient, amount0, amount1);
     }
@@ -129,6 +135,7 @@ contract ListaV3FactoryOwner is UUPSUpgradeable, AccessControlEnumerableUpgradea
 
     function setRevenueCollector(address _revenueCollector) external onlyRole(MANAGER) {
         require(_revenueCollector != address(0), 'revenueCollector=0');
+        require(_revenueCollector != revenueCollector, 'revenueCollector unchanged');
         emit RevenueCollectorChanged(revenueCollector, _revenueCollector);
         revenueCollector = _revenueCollector;
     }
@@ -147,6 +154,17 @@ contract ListaV3FactoryOwner is UUPSUpgradeable, AccessControlEnumerableUpgradea
     /// need no storage, so read it straight off the new implementation and refuse a mismatch.
     function _authorizeUpgrade(address newImplementation) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(ListaV3FactoryOwner(newImplementation).factory() == factory, 'factory immutable mismatch');
+    }
+
+    /// @dev Refuse to remove the last DEFAULT_ADMIN_ROLE holder. `revokeRole` and `renounceRole` both
+    /// route through here; without the guard a sole admin could leave the contract unable to upgrade,
+    /// rotate MANAGER or exercise the factory escape hatch, with no recovery path.
+    /// Rotation still works: grant the successor first, then remove the predecessor.
+    function _revokeRole(bytes32 role, address account) internal override returns (bool) {
+        if (role == DEFAULT_ADMIN_ROLE && hasRole(role, account)) {
+            require(getRoleMemberCount(DEFAULT_ADMIN_ROLE) > 1, 'last admin');
+        }
+        return super._revokeRole(role, account);
     }
 
     /// @dev Without this, a caller could aim this contract's privileged `msg.sender` at an address

@@ -341,7 +341,7 @@ contract ListaV3FactoryOwnerTest is Test {
         assertEq(factory.owner(), address(feeOwner));
     }
 
-    function testAdminCanRetargetRevenueCollector() public {
+    function testManagerCanRetargetRevenueCollector() public {
         address newCollector = address(0xC011EC);
         vm.prank(MANAGER_ADDR);
         feeOwner.setRevenueCollector(newCollector);
@@ -358,6 +358,11 @@ contract ListaV3FactoryOwnerTest is Test {
         vm.prank(MANAGER_ADDR);
         vm.expectRevert(bytes('revenueCollector=0'));
         feeOwner.setRevenueCollector(address(0));
+
+        // Re-setting the current value is rejected rather than emitting a misleading (x, x) event.
+        vm.prank(MANAGER_ADDR);
+        vm.expectRevert(bytes('revenueCollector unchanged'));
+        feeOwner.setRevenueCollector(newCollector);
     }
 
     function testEnableFeeAmountThroughOwner() public {
@@ -457,15 +462,86 @@ contract ListaV3FactoryOwnerTest is Test {
         assertEq(feeOwner.factory(), address(factory));
     }
 
+    /// @notice A side sitting at the 1 wei the pool retains must not be requested: the pool would
+    /// decrement it to 0 and call transfer(0), which some tokens reject.
+    function testCollectDoesNotTouchSideRetainingOnlyDustWei() public {
+        ZeroRevertERC20 strict = new ZeroRevertERC20(type(uint128).max);
+        address normal = deployCode('out/TestERC20.sol/TestERC20.json', abi.encode(type(uint128).max));
+
+        strict.transfer(alice, 1e24);
+        IERC20Like(normal).transfer(alice, 1e24);
+        vm.startPrank(alice);
+        strict.approve(address(npm), type(uint256).max);
+        strict.approve(address(router), type(uint256).max);
+        IERC20Like(normal).approve(address(npm), type(uint256).max);
+        IERC20Like(normal).approve(address(router), type(uint256).max);
+        vm.stopPrank();
+
+        (address t0, address t1) = address(strict) < normal ? (address(strict), normal) : (normal, address(strict));
+        address p = _createPoolWithLiquidity(t0, t1, FEE);
+        vm.prank(MANAGER_ADDR);
+        feeOwner.setFeeProtocol(p, 5, 5);
+
+        // Fees accrue on the input token. Accrue on the strict side, then sweep it down to 1 wei.
+        _swapVia(FEE, address(strict), normal, 5e18);
+        vm.prank(BOT_ADDR);
+        feeOwner.collectProtocolFees(p);
+
+        // Now accrue only on the normal side; the strict side stays at exactly 1.
+        _swapVia(FEE, normal, address(strict), 5e18);
+        (uint128 pending0, uint128 pending1) = IListaV3Pool(p).protocolFees();
+        (uint128 strictPending, uint128 normalPending) =
+            t0 == address(strict) ? (pending0, pending1) : (pending1, pending0);
+        assertEq(strictPending, 1);
+        assertTrue(normalPending > 1);
+
+        // Requesting max on the strict side would make the pool call transfer(0) and revert.
+        vm.prank(BOT_ADDR);
+        (uint128 got0, uint128 got1) = feeOwner.collectProtocolFees(p);
+        (uint128 strictGot, uint128 normalGot) = t0 == address(strict) ? (got0, got1) : (got1, got0);
+        assertEq(strictGot, 0);
+        assertEq(normalGot, normalPending - 1);
+        assertEq(IERC20Like(normal).balanceOf(REVENUE_COLLECTOR), normalGot);
+    }
+
+    /// @notice The last DEFAULT_ADMIN_ROLE holder can neither renounce nor be revoked.
+    function testLastDefaultAdminCannotBeRemoved() public {
+        vm.startPrank(ADMIN);
+        vm.expectRevert(bytes('last admin'));
+        feeOwner.renounceRole(ADMIN_ROLE, ADMIN);
+        vm.expectRevert(bytes('last admin'));
+        feeOwner.revokeRole(ADMIN_ROLE, ADMIN);
+        vm.stopPrank();
+        assertTrue(feeOwner.hasRole(ADMIN_ROLE, ADMIN));
+
+        // Rotation still works: add a successor first, then step down.
+        address successor = address(0xADD2);
+        vm.startPrank(ADMIN);
+        feeOwner.grantRole(ADMIN_ROLE, successor);
+        feeOwner.renounceRole(ADMIN_ROLE, ADMIN);
+        vm.stopPrank();
+        assertFalse(feeOwner.hasRole(ADMIN_ROLE, ADMIN));
+        assertEq(feeOwner.getRoleMemberCount(ADMIN_ROLE), 1);
+
+        // The successor is now the sole admin and is protected the same way.
+        vm.prank(successor);
+        vm.expectRevert(bytes('last admin'));
+        feeOwner.renounceRole(ADMIN_ROLE, successor);
+    }
+
     // --- helpers ---
 
-    function _createPoolWithLiquidity(uint24 fee) internal returns (address p) {
-        p = npm.createAndInitializePoolIfNecessary(address(token0), address(token1), fee, INITIAL_SQRT_PRICE);
+    function _createPoolWithLiquidity(uint24 fee) internal returns (address) {
+        return _createPoolWithLiquidity(address(token0), address(token1), fee);
+    }
+
+    function _createPoolWithLiquidity(address t0, address t1, uint24 fee) internal returns (address p) {
+        p = npm.createAndInitializePoolIfNecessary(t0, t1, fee, INITIAL_SQRT_PRICE);
         vm.prank(alice);
         npm.mint(
             INpm.MintParams({
-                token0: address(token0),
-                token1: address(token1),
+                token0: t0,
+                token1: t1,
                 fee: fee,
                 tickLower: TICK_LOWER,
                 tickUpper: TICK_UPPER,
@@ -497,6 +573,38 @@ contract ListaV3FactoryOwnerTest is Test {
                 sqrtPriceLimitX96: 0
             })
         );
+    }
+}
+
+/// @dev Rejects zero-value transfers, a non-standard behavior some real ERC20s have.
+contract ZeroRevertERC20 {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    constructor(uint256 supply) {
+        balanceOf[msg.sender] = supply;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        return _move(msg.sender, to, amount);
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        uint256 allowed = allowance[from][msg.sender];
+        if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
+        return _move(from, to, amount);
+    }
+
+    function _move(address from, address to, uint256 amount) internal returns (bool) {
+        require(amount > 0, 'zero transfer');
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
     }
 }
 
